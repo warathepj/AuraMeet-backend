@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import pandas as pd
 import os
 import shutil
+import httpx # Import httpx for making HTTP requests
 
 # Global dictionary to store loaded Excel DataFrames
 excel_data = {}
@@ -51,7 +52,23 @@ async def read_root():
 @app.post("/message")
 async def create_message(message: Message):
     print(f"Received message from mobile: {message.message}")
-    return {"message": f"Echo: {message.message}"}
+
+    webhook_url = "http://localhost:5678/webhook-test/1d1a9fa9-7f57-44b4-835d-d79ed8a4ec25"
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(webhook_url, json={"message": message.message})
+            response.raise_for_status() # Raise an exception for 4xx or 5xx responses
+        print(f"Message successfully forwarded to webhook. Status: {response.status_code}")
+        return {"message": f"Message '{message.message}' forwarded to webhook."}
+    except httpx.RequestError as exc:
+        print(f"An error occurred while requesting {exc.request.url!r}: {exc}")
+        return {"message": f"Failed to forward message: Connection error to webhook."}
+    except httpx.HTTPStatusError as exc:
+        print(f"Error response {exc.response.status_code} while requesting {exc.request.url!r}: {exc}")
+        return {"message": f"Failed to forward message: Webhook returned error status {exc.response.status_code}."}
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        return {"message": f"Failed to forward message: An unexpected error occurred."}
 
 @app.get("/items/{item_id}")
 async def read_item(item_id: int, q: str = None):

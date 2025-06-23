@@ -1,8 +1,12 @@
 from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import pandas as pd
 import os
 import shutil
+
+# Global dictionary to store loaded Excel DataFrames
+excel_data = {}
 
 class Message(BaseModel):
     message: str
@@ -21,6 +25,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def load_excel_data():
+    excel_dir = "backend/excel"
+    if not os.path.exists(excel_dir):
+        print(f"Directory '{excel_dir}' does not exist. No Excel files to load.")
+        return
+
+    for filename in os.listdir(excel_dir):
+        if filename.endswith(".xlsx"):
+            file_path = os.path.join(excel_dir, filename)
+            try:
+                df = pd.read_excel(file_path)
+                excel_data[os.path.splitext(filename)[0]] = df
+                print(f"Loaded '{filename}' into pandas DataFrame.")
+            except Exception as e:
+                print(f"Error loading '{filename}': {e}")
+    print(f"All Excel files loaded. Available DataFrames: {list(excel_data.keys())}")
 
 @app.get("/")
 async def read_root():

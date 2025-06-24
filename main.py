@@ -28,7 +28,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def load_excel_data():
-    excel_dir = "backend/excel"
+    excel_dir = "excel"
     if not os.path.exists(excel_dir):
         print(f"Directory '{excel_dir}' does not exist. No Excel files to load.")
         return
@@ -96,7 +96,16 @@ async def upload_excel_file(request: Request, file: UploadFile = File(...)):
     try:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        return {"message": f"File '{file.filename}' uploaded successfully to {file_path}"}
+        
+        # Load the newly uploaded Excel file into the global excel_data dictionary
+        try:
+            df = pd.read_excel(file_path)
+            excel_data[os.path.splitext(file.filename)[0]] = df
+            print(f"Loaded new file '{file.filename}' into pandas DataFrame.")
+            return {"message": f"File '{file.filename}' uploaded and loaded successfully to {file_path}"}
+        except Exception as e:
+            print(f"Error loading newly uploaded file '{file.filename}': {e}")
+            return {"message": f"File uploaded, but error loading into DataFrame: {e}"}
     except Exception as e:
         return {"message": f"Error uploading file: {e}"}
     finally:

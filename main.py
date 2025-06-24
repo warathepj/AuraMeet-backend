@@ -5,6 +5,7 @@ import pandas as pd
 import os
 import shutil
 import httpx # Import httpx for making HTTP requests
+import json # Import json for parsing webhook responses
 
 # Global dictionary to store loaded Excel DataFrames
 excel_data = {}
@@ -28,7 +29,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def load_excel_data():
-    excel_dir = "excel"
+    excel_dir = "backend/excel"
     if not os.path.exists(excel_dir):
         print(f"Directory '{excel_dir}' does not exist. No Excel files to load.")
         return
@@ -66,18 +67,30 @@ async def create_message(message: Message):
         async with httpx.AsyncClient() as client:
             response = await client.post(webhook_url, json=payload)
             response.raise_for_status() # Raise an exception for 4xx or 5xx responses
+        webhook_response_text = response.text # Capture the webhook's response body as text
         print(f"Message successfully forwarded to webhook. Status: {response.status_code}")
+        print(f"Webhook response: {webhook_response_text}")
 
-        return {"message": f"Message '{message.message}' forwarded to webhook."}
+        # Parse the webhook response and extract the 'output' field
+        try:
+            webhook_response_json = json.loads(webhook_response_text)
+            if "output" in webhook_response_json:
+                return {"message": webhook_response_json["output"]}
+            else:
+                print("Webhook response did not contain an 'output' field.")
+                return {"message": "Received response from webhook, but no 'output' field found."}
+        except json.JSONDecodeError:
+            print("Webhook response was not valid JSON.")
+            return {"message": f"Received non-JSON response from webhook: {webhook_response_text}"}
     except httpx.RequestError as exc:
-        print(f"An error occurred while requesting {exc.request.url!r}: {exc}")
-        return {"message": f"Failed to forward message: Connection error to webhook."}
+        print(f"An httpx.RequestError occurred while requesting {exc.request.url!r}: {exc.__class__.__name__}: {exc}")
+        return {"message": f"Failed to forward message: Connection error to webhook. Details: {exc.__class__.__name__}: {exc}"}
     except httpx.HTTPStatusError as exc:
-        print(f"Error response {exc.response.status_code} while requesting {exc.request.url!r}: {exc}")
-        return {"message": f"Failed to forward message: Webhook returned error status {exc.response.status_code}."}
+        print(f"An httpx.HTTPStatusError occurred: Error response {exc.response.status_code} while requesting {exc.request.url!r}. Response body: {exc.response.text}. Details: {exc}")
+        return {"message": f"Failed to forward message: Webhook returned error status {exc.response.status_code}. Response: {exc.response.text}"}
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        return {"message": f"Failed to forward message: An unexpected error occurred."}
+        print(f"An unexpected error occurred: {e.__class__.__name__}: {e}")
+        return {"message": f"Failed to forward message: An unexpected error occurred. Details: {e.__class__.__name__}: {e}"}
 
 @app.get("/items/{item_id}")
 async def read_item(item_id: int, q: str = None):

@@ -2,3 +2,6 @@ fastapi
 pydantic
 pandas
 httpx
+uvicorn
+openpyxl
+python-multipart
